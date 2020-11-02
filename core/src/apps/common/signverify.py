@@ -1,16 +1,17 @@
 from ubinascii import hexlify
 
-from trezor import utils, wire
+from trezor import ui, utils, wire
 from trezor.crypto.hashlib import blake256, sha256
-from trezor.ui.text import Text
+from trezor.ui.text import Text, break_lines
 
 from apps.common.confirm import require_confirm
-from apps.common.layout import split_address
+from apps.common.layout import paginate_lines, split_address
 from apps.common.writers import write_bitcoin_varint
 
 if False:
     from typing import List
     from apps.common.coininfo import CoinInfo
+    from trezor.ui.text import TextContent
 
 
 def message_digest(coin: CoinInfo, message: bytes) -> bytes:
@@ -30,24 +31,25 @@ def message_digest(coin: CoinInfo, message: bytes) -> bytes:
     return ret
 
 
-def split_message(message: bytes) -> List[str]:
+def split_message(message: bytes, font: int) -> List[List[TextContent]]:
     try:
         m = bytes(message).decode()
         words = m.split(" ")
     except UnicodeError:
         m = "hex(%s)" % hexlify(message).decode()
         words = [m]
-    return words
+
+    return break_lines(words, new_lines=False, max_lines=None, font=font)
 
 
 async def require_confirm_sign_message(
     ctx: wire.Context, coin: str, message: bytes
 ) -> None:
     header = "Sign {} message".format(coin)
-    message_lines = split_message(message)
-    text = Text(header, new_lines=False)
-    text.normal(*message_lines)
-    await require_confirm(ctx, text)
+    await require_confirm(
+        ctx,
+        paginate_lines(split_message(message, ui.NORMAL), header),
+    )
 
 
 async def require_confirm_verify_message(
@@ -60,6 +62,4 @@ async def require_confirm_verify_message(
     text.mono(*split_address(address))
     await require_confirm(ctx, text)
 
-    text = Text(header, new_lines=False)
-    text.mono(*split_message(message))
-    await require_confirm(ctx, text)
+    await require_confirm(ctx, paginate_lines(split_message(message, ui.MONO), header))

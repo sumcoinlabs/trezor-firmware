@@ -7,15 +7,16 @@ from trezor.ui.button import ButtonDefault
 from trezor.ui.container import Container
 from trezor.ui.qr import Qr
 from trezor.ui.scroll import Paginated
-from trezor.ui.text import Text
+from trezor.ui.text import TEXT_MAX_LINES, Text
 from trezor.utils import chunks
 
 from apps.common import HARDENED
 from apps.common.confirm import confirm, require_confirm
 
 if False:
-    from typing import Iterable, Iterator, List
+    from typing import Iterable, Iterator, List, Union
     from trezor import wire
+    from trezor.ui.text import TextContent
 
 
 async def show_address(
@@ -100,6 +101,44 @@ def address_n_to_str(address_n: list) -> str:
         return "m"
 
     return "m/" + "/".join([path_item(i) for i in address_n])
+
+
+def paginate_lines(
+    lines: List[List[TextContent]],
+    header: str,
+    header_icon: str = ui.ICON_DEFAULT,
+    icon_color: int = ui.ORANGE_ICON,
+) -> Union[Text, Paginated]:
+    chunked = chunks(lines, TEXT_MAX_LINES)
+
+    pages = []
+    for chunk in chunked:
+        page = [word for line in chunk for word in line]
+        pages.append(page)
+
+    if len(pages) == 1:
+        result = Text(
+            header,
+            header_icon=header_icon,
+            icon_color=icon_color,
+            new_lines=False,
+            pre_linebreaked=True,
+        )
+        result.normal(*pages[0])
+        return result
+    else:
+        result_pages = []  # type: List[ui.Component]
+        for page in pages:
+            c = Text(
+                header,
+                header_icon=header_icon,
+                icon_color=icon_color,
+                new_lines=False,
+                pre_linebreaked=True,
+            )
+            c.normal(*page)
+            result_pages.append(c)
+        return Paginated(result_pages)
 
 
 async def show_warning(
