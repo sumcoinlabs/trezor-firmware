@@ -3,7 +3,7 @@ from micropython import const
 from trezor import ui
 
 if False:
-    from typing import List, Union
+    from typing import List, Union, Optional, Sequence
 
 TEXT_HEADER_HEIGHT = const(48)
 TEXT_LINE_HEIGHT = const(26)
@@ -15,12 +15,14 @@ TEXT_MAX_LINES = const(5)
 BR = const(-256)
 BR_HALF = const(-257)
 
+_FONTS = (ui.NORMAL, ui.BOLD, ui.MONO)
+
 if False:
     TextContent = Union[str, int]
 
 
 def render_text(
-    words: List[TextContent],
+    words: Sequence[TextContent],
     new_lines: bool,
     max_lines: int,
     font: int = ui.NORMAL,
@@ -29,17 +31,67 @@ def render_text(
     offset_x: int = TEXT_MARGIN_LEFT,
     offset_y: int = TEXT_HEADER_HEIGHT + TEXT_LINE_HEIGHT,
     offset_x_max: int = ui.WIDTH,
+    pre_linebreaked: bool = False,
 ) -> None:
+    if not pre_linebreaked:
+        lines = break_lines(
+            words, new_lines, max_lines, font, fg, offset_x, offset_y, offset_x_max
+        )
+        words = [word for line in lines for word in line]
+
     # initial rendering state
     INITIAL_OFFSET_X = offset_x
     offset_y_max = TEXT_HEADER_HEIGHT + (TEXT_LINE_HEIGHT * max_lines)
 
-    FONTS = (ui.NORMAL, ui.BOLD, ui.MONO)
+    for word in words:
+        if isinstance(word, int):
+            if word is BR or word is BR_HALF:
+                # line break or half-line break
+                if offset_y > offset_y_max:
+                    return
+                offset_x = INITIAL_OFFSET_X
+                offset_y += TEXT_LINE_HEIGHT if word is BR else TEXT_LINE_HEIGHT_HALF
+            elif word in _FONTS:
+                # change of font style
+                font = word
+            else:
+                # change of foreground color
+                fg = word
+            continue
+
+        ui.display.text(offset_x, offset_y, word, font, fg, bg)
+        offset_x += ui.display.text_width(word, font)
+
+
+def break_lines(
+    words: Sequence[TextContent],
+    new_lines: bool,
+    max_lines: Optional[int],
+    font: int = ui.NORMAL,
+    fg: int = ui.FG,
+    offset_x: int = TEXT_MARGIN_LEFT,
+    offset_y: int = TEXT_HEADER_HEIGHT + TEXT_LINE_HEIGHT,
+    offset_x_max: int = ui.WIDTH,
+) -> List[List[TextContent]]:
+    if max_lines is None:
+        max_lines = 65536
+    INITIAL_OFFSET_X = offset_x
+    offset_y_max = TEXT_HEADER_HEIGHT + (TEXT_LINE_HEIGHT * max_lines)
 
     # sizes of common glyphs
-    SPACE = ui.display.text_width(" ", font)
     DASH = ui.display.text_width("-", ui.BOLD)
     ELLIPSIS = ui.display.text_width("...", ui.BOLD)
+
+    result = []  # type: List[List[TextContent]]
+    current_line = [fg, font]  # type: List[TextContent]
+
+    def next_line(br: int = BR) -> None:
+        nonlocal current_line, result, offset_x, offset_y
+        current_line.append(br)
+        result.append(current_line)
+        current_line = [fg, font]
+        offset_x = INITIAL_OFFSET_X
+        offset_y += TEXT_LINE_HEIGHT if br is BR else TEXT_LINE_HEIGHT_HALF
 
     for word_index, word in enumerate(words):
         has_next_word = word_index < len(words) - 1
@@ -48,16 +100,19 @@ def render_text(
             if word is BR or word is BR_HALF:
                 # line break or half-line break
                 if offset_y > offset_y_max:
-                    ui.display.text(offset_x, offset_y, "...", ui.BOLD, ui.GREY, bg)
-                    return
-                offset_x = INITIAL_OFFSET_X
-                offset_y += TEXT_LINE_HEIGHT if word is BR else TEXT_LINE_HEIGHT_HALF
-            elif word in FONTS:
+                    current_line.extend([ui.BOLD, ui.GREY, "..."])
+                    result.append(current_line)
+                    return result
+
+                next_line(word)
+            elif word in _FONTS:
                 # change of font style
                 font = word
+                current_line.append(font)
             else:
                 # change of foreground color
                 fg = word
+                current_line.append(fg)
             continue
 
         width = ui.display.text_width(word, font)
@@ -73,8 +128,7 @@ def render_text(
                 and not beginning_of_line
             ):
                 # line break
-                offset_x = INITIAL_OFFSET_X
-                offset_y += TEXT_LINE_HEIGHT
+                next_line()
                 break
             # word split
             if offset_y < offset_y_max:
@@ -93,31 +147,35 @@ def render_text(
                 index = 0
             span = word[:index]
             # render word span
-            ui.display.text(offset_x, offset_y, span, font, fg, bg)
-            ui.display.text(offset_x + width, offset_y, split, ui.BOLD, ui.GREY, bg)
+            current_line.extend([span, ui.BOLD, ui.GREY, split])
+
             # line break
             if offset_y >= offset_y_max:
-                return
-            offset_x = INITIAL_OFFSET_X
-            offset_y += TEXT_LINE_HEIGHT
+                result.append(current_line)
+                return result
+            next_line()
+
             # continue with the rest
             word = word[index:]
             width = ui.display.text_width(word, font)
 
         # render word
-        ui.display.text(offset_x, offset_y, word, font, fg, bg)
+        current_line.append(word)
 
         if new_lines and has_next_word:
             # line break
             if offset_y >= offset_y_max:
-                ui.display.text(offset_x, offset_y, "...", ui.BOLD, ui.GREY, bg)
-                return
-            offset_x = INITIAL_OFFSET_X
-            offset_y += TEXT_LINE_HEIGHT
+                result.append(current_line + [ui.BOLD, ui.GREY, "..."])
+                return result
+
+            next_line()
         else:
             # shift cursor
-            offset_x += width
-            offset_x += SPACE
+            current_line.append(" ")
+            offset_x += width + ui.display.text_width(" ", font)
+
+    result.append(current_line)
+    return result
 
 
 class Text(ui.Component):
@@ -128,6 +186,7 @@ class Text(ui.Component):
         icon_color: int = ui.ORANGE_ICON,
         max_lines: int = TEXT_MAX_LINES,
         new_lines: bool = True,
+        pre_linebreaked: bool = False,
     ):
         self.header_text = header_text
         self.header_icon = header_icon
@@ -136,6 +195,7 @@ class Text(ui.Component):
         self.new_lines = new_lines
         self.content = []  # type: List[TextContent]
         self.repaint = True
+        self.pre_linebreaked = pre_linebreaked
 
     def normal(self, *content: TextContent) -> None:
         self.content.append(ui.NORMAL)
@@ -164,7 +224,12 @@ class Text(ui.Component):
                 ui.BG,
                 self.icon_color,
             )
-            render_text(self.content, self.new_lines, self.max_lines)
+            render_text(
+                self.content,
+                self.new_lines,
+                self.max_lines,
+                pre_linebreaked=self.pre_linebreaked,
+            )
             self.repaint = False
 
     if __debug__:
