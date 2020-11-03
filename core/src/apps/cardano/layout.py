@@ -1,4 +1,3 @@
-import math
 from ubinascii import hexlify
 
 from trezor import ui
@@ -10,11 +9,12 @@ from trezor.messages import (
 from trezor.strings import format_amount
 from trezor.ui.button import ButtonDefault
 from trezor.ui.scroll import Paginated
-from trezor.ui.text import Text
+from trezor.ui.text import BR, Text
 from trezor.utils import chunks
 
 from apps.common.confirm import confirm, require_confirm, require_hold_to_confirm
-from apps.common.layout import address_n_to_str, show_warning
+from apps.common.layout import address_n_to_str, paginate_lines, show_warning
+from apps.common.paths import break_address_n_to_lines
 
 from .helpers import protocol_magics
 from .helpers.utils import to_account_path
@@ -44,26 +44,20 @@ CERTIFICATE_TYPE_NAMES = {
     CardanoCertificateType.STAKE_DELEGATION: "Stake delegation",
 }
 
-# Maximum number of characters per line in monospace font.
-_MAX_MONO_LINE = 18
-
 
 def format_coin_amount(amount: int) -> str:
     return "%s %s" % (format_amount(amount, 6), "ADA")
 
 
 async def confirm_sending(ctx: wire.Context, amount: int, to: str):
-    page1 = Text("Confirm transaction", ui.ICON_SEND, ui.GREEN)
-    page1.normal("Confirm sending:")
-    page1.bold(format_coin_amount(amount))
-    page1.normal("to")
+    lines = [
+        ["Confirm sending:", BR],
+        [ui.BOLD, format_coin_amount(amount), BR],
+        [ui.NORMAL, "to", BR],
+    ] + [[ui.BOLD, to_line, BR] for to_line in chunks(to, 17)]
 
-    to_lines = list(chunks(to, 17))
-    page1.bold(to_lines[0])
-
-    pages = [page1] + _paginate_lines(to_lines, 1, "Confirm transaction", ui.ICON_SEND)
-
-    await require_confirm(ctx, Paginated(pages))
+    paginated = paginate_lines(lines, "Confirm transaction", ui.ICON_SEND, ui.GREEN)
+    await require_confirm(ctx, paginated)
 
 
 async def show_warning_tx_no_staking_info(
@@ -207,58 +201,26 @@ async def show_address(
     """
 
     address_type_label = "%s address" % ADDRESS_TYPE_NAMES[address_type]
-    page1 = Text(address_type_label, ui.ICON_RECEIVE, ui.GREEN)
+    lines = []
 
-    lines_per_page = 5
-    lines_used_on_first_page = 0
-
-    # assemble first page to be displayed (path + network + whatever part of the address fits)
     if network is not None:
-        page1.normal("%s network" % network)
-        lines_used_on_first_page += 1
+        lines.append(["%s network" % network, BR])
 
-    path_str = address_n_to_str(path)
-    page1.mono(path_str)
-    lines_used_on_first_page = min(
-        lines_used_on_first_page + math.ceil(len(path_str) / _MAX_MONO_LINE),
-        lines_per_page,
-    )
+    path_lines = break_address_n_to_lines(path)
+    lines.extend([[ui.MONO, path_line, BR] for path_line in path_lines])
 
-    address_lines = list(chunks(address, 17))
-    for address_line in address_lines[: lines_per_page - lines_used_on_first_page]:
-        page1.bold(address_line)
+    address_lines = chunks(address, 17)
+    lines.extend([[ui.BOLD, address_line, BR] for address_line in address_lines])
 
-    # append remaining pages containing the rest of the address
-    pages = [page1] + _paginate_lines(
-        address_lines,
-        lines_per_page - lines_used_on_first_page,
-        address_type_label,
-        ui.ICON_RECEIVE,
-        lines_per_page,
-    )
+    paginated = paginate_lines(lines, address_type_label, ui.ICON_RECEIVE, ui.GREEN)
 
     return await confirm(
         ctx,
-        Paginated(pages),
+        paginated,
         code=ButtonRequestType.Address,
         cancel="QR",
         cancel_style=ButtonDefault,
     )
-
-
-def _paginate_lines(
-    lines: List[str], offset: int, desc: str, icon: str, lines_per_page: int = 4
-) -> List[ui.Component]:
-    pages = []
-    if len(lines) > offset:
-        to_pages = list(chunks(lines[offset:], lines_per_page))
-        for page in to_pages:
-            t = Text(desc, icon, ui.GREEN)
-            for line in page:
-                t.bold(line)
-            pages.append(t)
-
-    return pages
 
 
 async def show_warning_address_foreign_staking_key(
