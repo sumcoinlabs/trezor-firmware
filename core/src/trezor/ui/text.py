@@ -144,7 +144,15 @@ def break_lines(
                 if offset_x + width + splitw < offset_x_max:
                     break
             else:
+                width = 0
                 index = 0
+
+            # avoid rendering "-" with empty span
+            if index == 0 and offset_y < offset_y_max and not beginning_of_line:
+                next_line()
+                width = ui.display.text_width(word, font)
+                continue
+
             span = word[:index]
             # render word span
             current_line.extend([span, ui.BOLD, ui.GREY, split])
