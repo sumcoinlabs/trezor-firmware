@@ -23,7 +23,6 @@ if False:
 
 def render_text(
     words: Sequence[TextContent],
-    new_lines: bool,
     max_lines: int,
     font: int = ui.NORMAL,
     fg: int = ui.FG,
@@ -31,14 +30,7 @@ def render_text(
     offset_x: int = TEXT_MARGIN_LEFT,
     offset_y: int = TEXT_HEADER_HEIGHT + TEXT_LINE_HEIGHT,
     offset_x_max: int = ui.WIDTH,
-    pre_linebreaked: bool = False,
 ) -> None:
-    if not pre_linebreaked:
-        lines = break_lines(
-            words, new_lines, max_lines, font, fg, offset_x, offset_y, offset_x_max
-        )
-        words = [word for line in lines for word in line]
-
     # initial rendering state
     INITIAL_OFFSET_X = offset_x
     offset_y_max = TEXT_HEADER_HEIGHT + (TEXT_LINE_HEIGHT * max_lines)
@@ -194,7 +186,7 @@ class Text(ui.Component):
         icon_color: int = ui.ORANGE_ICON,
         max_lines: int = TEXT_MAX_LINES,
         new_lines: bool = True,
-        pre_linebreaked: bool = False,
+        auto_linebreaks: bool = True,
     ):
         self.header_text = header_text
         self.header_icon = header_icon
@@ -203,7 +195,7 @@ class Text(ui.Component):
         self.new_lines = new_lines
         self.content = []  # type: List[TextContent]
         self.repaint = True
-        self.pre_linebreaked = pre_linebreaked
+        self.auto_linebreaks = auto_linebreaks
 
     def normal(self, *content: TextContent) -> None:
         self.content.append(ui.NORMAL)
@@ -232,11 +224,16 @@ class Text(ui.Component):
                 ui.BG,
                 self.icon_color,
             )
+
+            if self.auto_linebreaks:
+                lines = break_lines(self.content, self.new_lines, self.max_lines)
+                words = [word for line in lines for word in line]
+            else:
+                words = self.content
+
             render_text(
-                self.content,
-                self.new_lines,
+                words,
                 self.max_lines,
-                pre_linebreaked=self.pre_linebreaked,
             )
             self.repaint = False
 

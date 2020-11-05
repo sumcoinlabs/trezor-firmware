@@ -122,7 +122,7 @@ def paginate_lines(
             header_icon=header_icon,
             icon_color=icon_color,
             new_lines=False,
-            pre_linebreaked=True,
+            auto_linebreaks=False,
         )
         result.normal(*pages[0])
         return result
@@ -134,7 +134,7 @@ def paginate_lines(
                 header_icon=header_icon,
                 icon_color=icon_color,
                 new_lines=False,
-                pre_linebreaked=True,
+                auto_linebreaks=False,
             )
             c.normal(*page)
             result_pages.append(c)
