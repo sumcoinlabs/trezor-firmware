@@ -31,7 +31,7 @@ def message_digest(coin: CoinInfo, message: bytes) -> bytes:
     return ret
 
 
-def split_message(message: bytes, font: int) -> List[List[TextContent]]:
+def split_message(message: bytes, font: int) -> List[TextContent]:
     try:
         m = bytes(message).decode()
         words = m.split(" ")

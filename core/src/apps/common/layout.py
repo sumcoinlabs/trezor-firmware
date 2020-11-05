@@ -7,7 +7,7 @@ from trezor.ui.button import ButtonDefault
 from trezor.ui.container import Container
 from trezor.ui.qr import Qr
 from trezor.ui.scroll import Paginated
-from trezor.ui.text import TEXT_MAX_LINES, Text
+from trezor.ui.text import BR, TEXT_MAX_LINES, Text
 from trezor.utils import chunks
 
 from apps.common import HARDENED
@@ -104,16 +104,23 @@ def address_n_to_str(address_n: list) -> str:
 
 
 def paginate_lines(
-    lines: List[List[TextContent]],
+    content: List[TextContent],
     header: str,
     header_icon: str = ui.ICON_DEFAULT,
     icon_color: int = ui.ORANGE_ICON,
 ) -> Union[Text, Paginated]:
-    chunked = chunks(lines, TEXT_MAX_LINES)
-
+    nlines = 0
+    page = []
     pages = []
-    for chunk in chunked:
-        page = [word for line in chunk for word in line]
+    for word in content:
+        page.append(word)
+        if word is BR:
+            nlines += 1
+            if nlines >= TEXT_MAX_LINES:
+                pages.append(page)
+                page = []
+                nlines = 0
+    if len(page) > 0:
         pages.append(page)
 
     if len(pages) == 1:
