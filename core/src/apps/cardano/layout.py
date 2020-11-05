@@ -50,11 +50,15 @@ def format_coin_amount(amount: int) -> str:
 
 
 async def confirm_sending(ctx: wire.Context, amount: int, to: str):
+    # fmt: off
     lines = [
-        ["Confirm sending:", BR],
-        [ui.BOLD, format_coin_amount(amount), BR],
-        [ui.NORMAL, "to", BR],
-    ] + [[ui.BOLD, to_line, BR] for to_line in chunks(to, 17)]
+        "Confirm sending:", BR,
+        ui.BOLD, format_coin_amount(amount), BR,
+        ui.NORMAL, "to", BR,
+    ]
+    # fmt: on
+    for to_line in chunks(to, 17):
+        lines.extend([ui.BOLD, to_line, BR])
 
     paginated = paginate_lines(lines, "Confirm transaction", ui.ICON_SEND, ui.GREEN)
     await require_confirm(ctx, paginated)
@@ -204,13 +208,13 @@ async def show_address(
     lines = []
 
     if network is not None:
-        lines.append(["%s network" % network, BR])
+        lines.extend(["%s network" % network, BR])
 
-    path_lines = break_address_n_to_lines(path)
-    lines.extend([[ui.MONO, path_line, BR] for path_line in path_lines])
+    for path_line in break_address_n_to_lines(path):
+        lines.extend([ui.MONO, path_line, BR])
 
-    address_lines = chunks(address, 17)
-    lines.extend([[ui.BOLD, address_line, BR] for address_line in address_lines])
+    for address_line in chunks(address, 17):
+        lines.extend([ui.BOLD, address_line, BR])
 
     paginated = paginate_lines(lines, address_type_label, ui.ICON_RECEIVE, ui.GREEN)
 
