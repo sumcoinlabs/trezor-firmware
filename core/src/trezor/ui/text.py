@@ -64,7 +64,7 @@ def break_lines(
     offset_x: int = TEXT_MARGIN_LEFT,
     offset_y: int = TEXT_HEADER_HEIGHT + TEXT_LINE_HEIGHT,
     offset_x_max: int = ui.WIDTH,
-) -> List[List[TextContent]]:
+) -> List[TextContent]:
     if max_lines is None:
         max_lines = 65536
     INITIAL_OFFSET_X = offset_x
@@ -74,14 +74,12 @@ def break_lines(
     DASH = ui.display.text_width("-", ui.BOLD)
     ELLIPSIS = ui.display.text_width("...", ui.BOLD)
 
-    result = []  # type: List[List[TextContent]]
-    current_line = [fg, font]  # type: List[TextContent]
+    result = [fg, font]  # type: List[TextContent]
 
     def next_line(br: int = BR) -> None:
-        nonlocal current_line, result, offset_x, offset_y
-        current_line.append(br)
-        result.append(current_line)
-        current_line = [fg, font]
+        nonlocal result, offset_x, offset_y
+        result.append(br)
+        result.extend([fg, font])  # FIXME: move this to the pagination function?
         offset_x = INITIAL_OFFSET_X
         offset_y += TEXT_LINE_HEIGHT if br is BR else TEXT_LINE_HEIGHT_HALF
 
@@ -92,19 +90,18 @@ def break_lines(
             if word is BR or word is BR_HALF:
                 # line break or half-line break
                 if offset_y > offset_y_max:
-                    current_line.extend([ui.BOLD, ui.GREY, "..."])
-                    result.append(current_line)
+                    result.extend([ui.BOLD, ui.GREY, "..."])
                     return result
 
                 next_line(word)
             elif word in _FONTS:
                 # change of font style
                 font = word
-                current_line.append(font)
+                result.append(font)
             else:
                 # change of foreground color
                 fg = word
-                current_line.append(fg)
+                result.append(fg)
             continue
 
         width = ui.display.text_width(word, font)
@@ -147,11 +144,10 @@ def break_lines(
 
             span = word[:index]
             # render word span
-            current_line.extend([span, ui.BOLD, ui.GREY, split])
+            result.extend([span, ui.BOLD, ui.GREY, split])
 
             # line break
             if offset_y >= offset_y_max:
-                result.append(current_line)
                 return result
             next_line()
 
@@ -160,21 +156,20 @@ def break_lines(
             width = ui.display.text_width(word, font)
 
         # render word
-        current_line.append(word)
+        result.append(word)
 
         if new_lines and has_next_word:
             # line break
             if offset_y >= offset_y_max:
-                result.append(current_line + [ui.BOLD, ui.GREY, "..."])
+                result.extend([ui.BOLD, ui.GREY, "..."])
                 return result
 
             next_line()
         else:
             # shift cursor
-            current_line.append(" ")
+            result.append(" ")
             offset_x += width + ui.display.text_width(" ", font)
 
-    result.append(current_line)
     return result
 
 
@@ -225,14 +220,10 @@ class Text(ui.Component):
                 self.icon_color,
             )
 
-            if self.auto_linebreaks:
-                lines = break_lines(self.content, self.new_lines, self.max_lines)
-                words = [word for line in lines for word in line]
-            else:
-                words = self.content
-
             render_text(
-                words,
+                break_lines(self.content, self.new_lines, self.max_lines)
+                if self.auto_linebreaks
+                else self.content,
                 self.max_lines,
             )
             self.repaint = False
